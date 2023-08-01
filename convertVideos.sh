@@ -71,7 +71,31 @@ set_encoder_and_quality() {
   QUALITY="$quality"
 }
 
-# Argument processing
+#Set up the file creation mode.   Either placed in an output folder or next to the original files.
+production_mode(){
+  local file="$1"
+  local mode="$2"
+  local output
+
+  if [ "$mode" = "-p" ] || [ "$mode" = "--production" ]; then
+    output="${file%.*}-Compressed.mp4"
+  else
+    output_folder="output_COMPRESSED"
+    mkdir -p "${output_folder}"
+
+    # Get the relative path of the file's directory to preserve folder structure in the output
+    relative_path=$(dirname "${file}")
+    # Create the corresponding directory structure in the output folder
+    mkdir -p "${output_folder}/${relative_path}"
+    # Construct the output file path
+    output="${output_folder}/${relative_path}/$(basename "${file%.*}").mp4"
+  fi
+
+  echo "$output"
+}
+
+
+#Argument processing
 if [ "$#" -eq 0 ]; then
   # If no arguments provided, use default encoder and quality
   ENCODER="$DEFAULT_ENCODER"
@@ -86,33 +110,31 @@ elif [ "$#" -eq 1 ] && { [ "$1" = "h264" ] || [ "$1" = "h265" ]; }; then
 elif [ "$#" -eq 2 ] && { [ "$1" = "h264" ] || [ "$1" = "h265" ]; } && { [ "$2" = "low" ] || [ "$2" = "medium" ] || [ "$2" = "high" ]; }; then
   # Set encoder and quality based on user input
   set_encoder_and_quality "$1" "$2"
+elif [ "$#" -eq 3 ] && { [ "$1" = "h264" ] || [ "$1" = "h265" ]; } && { [ "$2" = "low" ] || [ "$2" = "medium" ] || [ "$2" = "high" ]; } && { [ "$3" = "-p" ] || [ "$3" = "--production " ]; }; then
+  # Set encoder and quality based on user input AND use production mode
+  set_encoder_and_quality "$1" "$2"
 else
   echo -e "${ERROR}Invalid argument. Use --help or -h for usage information."
   exit 1
 fi
 
-#Set up the output folder
-output_folder="output_COMPRESSED"
-mkdir -p "$output_folder"
 
 # Log file path
 log_file="conversion_log.txt"
 echo "The following files have been converted" >> "$log_file"
 echo >> "$log_file"
 
+MODE="$3"
 #The encoding loop using find to locate .mov files recursively
 find . -type f -name "*.mov" -print0 | while IFS= read -r -d '' file; do
   if [ -f "$file" ]; then
-    # Get the relative path of the file's directory to preserve folder structure in the output
-    relative_path=$(dirname "${file}")
-    # Create the corresponding directory structure in the output folder
-    mkdir -p "${output_folder}/${relative_path}"
-    # Construct the output file path
-    output="${output_folder}/${relative_path}/$(basename "${file%.*}").mp4"
+
+    output=$(production_mode "$file" "$MODE")
+    
     echo -e "${BOLD}${COLOR}Converting $file to $output${NC}"
     #print the value of quality
     echo -e "${BOLD}${COLOR}CRF =${QUALITY}${NC}"
-    ffmpeg -hide_banner -loglevel info -stats -i "$file" -movflags use_metadata_tags -metadata sign="$signature" -c:v ${ENCODER} -crf ${QUALITY} -preset ultrafast "$output" < /dev/null #CRF value can be changed if you need to tweak the quality.  0-51
+    ffmpeg -hide_banner -loglevel info -stats -i "$file" -movflags use_metadata_tags -metadata sign="$signature" -c:v ${ENCODER} -crf ${QUALITY} "$output" -preset ultrafast < /dev/null #CRF value can be changed if you need to tweak the quality.  0-51
     
     # Log the conversion status (success or error) to the log file
     if [ $? -eq 0 ]; then
