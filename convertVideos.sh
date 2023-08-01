@@ -12,6 +12,19 @@ check_dependencies() {
   fi
 }
 
+#fuction to send a teams webhook
+sendToTeams()
+{
+  local elapsed_minutes="$1"
+  local log_file="$2"
+
+  #generate a log preview
+  log_content=$(head -n 10 "$log_file")
+
+  url="https://opentextcorporation.webhook.office.com/webhookb2/8d55d182-d9af-434d-a5a2-13fd611a6fcc@10a18477-d533-4ecd-a78d-916dbd849d7c/IncomingWebhook/c480fd7a8bda4c3fbce1796ef2db42d8/15753806-1297-45b6-8c57-cfe3bf51b013"
+  message='{"title": "Video Conversion Completed", "text": "All video files have been converted successfully.  \n\nElapsed Time: '"$elapsed_minutes"' minutes.\n\n\n\n'"$log_content"'"}'
+  curl -X POST -H "Content-Type: application/json" -d "$message" "$url"
+}
 #add a signnature to sign the meta data of each file we process
 signature="Compressed with convertVideos by Greg J."
 
@@ -159,3 +172,6 @@ echo "$signature">> "$log_file"
 
 #Terminal output
 echo -e "${BOLD}${COLOR}Total script execution time: $elapsed_minutes minutes"
+
+#Publish a notification
+sendToTeams "$elapsed_minutes" "$log_file"
