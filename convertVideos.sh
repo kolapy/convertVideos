@@ -4,27 +4,6 @@
 #Run this script in the directory containing your footage.
 start_time=$(date +%s.%N)
 
-# Check for dependencies
-check_dependencies() {
-  if ! command -v ffmpeg &>/dev/null; then
-    echo -e "${ERROR}Error: 'ffmpeg' is not installed. Please install it before running this script."
-    exit 1
-  fi
-}
-
-#fuction to send a teams webhook
-sendToTeams()
-{
-  local elapsed_minutes="$1"
-  local log_file="$2"
-
-  #generate a log preview
-  log_content=$(head -n 10 "$log_file")
-
-  url="https://opentextcorporation.webhook.office.com/webhookb2/8d55d182-d9af-434d-a5a2-13fd611a6fcc@10a18477-d533-4ecd-a78d-916dbd849d7c/IncomingWebhook/c480fd7a8bda4c3fbce1796ef2db42d8/15753806-1297-45b6-8c57-cfe3bf51b013"
-  message='{"title": "Video Conversion Completed", "text": "All video files have been converted successfully.  \n\nElapsed Time: '"$elapsed_minutes"' minutes.\n\n\n\n'"$log_content"'"}'
-  curl -X POST -H "Content-Type: application/json" -d "$message" "$url"
-}
 #add a signnature to sign the meta data of each file we process
 signature="Compressed with convertVideos by Greg J."
 
@@ -39,6 +18,37 @@ ERROR='\033[0;31m' #Red
 DEFAULT_ENCODER='libx265'
 DEFAULT_QUALITY='28'
 
+
+# Check for dependencies
+check_dependencies() {
+  if ! command -v ffmpeg &>/dev/null; then
+    echo -e "${ERROR}Error: 'ffmpeg' is not installed. Please install it before running this script."
+    exit 1
+  fi
+}
+
+#fuction to send a teams webhook
+sendToTeams()
+{
+  local elapsed_minutes="$1"
+  local log_file="$2"
+
+  #generate a log preview of the LAST 8 which is the summary
+  log_content=$(tail -n 8 "$log_file")
+
+  # Read the webhook URL from the .env file
+  source .env
+
+  # Ensure the URL is not empty before sending the message
+  if [ -z "$WEBHOOK_URL" ]; then
+    echo "Error: Webhook URL not set in .env file."
+    return 1
+  fi
+
+  message='{"title": "Video Conversion Completed", "text": "All video files have been converted successfully.  \n\nElapsed Time: '"$elapsed_minutes"' minutes.\n\n'"$log_content"'"}'
+  curl -X POST -H "Content-Type: application/json" -d "$message" "$WEBHOOK_URL"
+}
+
 # Function to display the help information
 display_help() {
   echo
@@ -46,6 +56,8 @@ display_help() {
   echo -e "${COLOR2}encoder: Specify the video encoder. Valid options: ${NC}h264, h265"
   echo -e "${COLOR2}quality: Specify the output quality. Valid options: ${NC}low, medium, high"
   echo -e "${COLOR2}If no encoder or quality options are provided, default values will be used.${NC}"
+
+  echo -e "${COLOR2}The third argument can can be set to ${NC}--production ${COLOR2}or${NC} -p ${COLOR2}to place files next to the original files${NC}"
 }
 
 # Function to log the summary of the conversion process
@@ -113,6 +125,8 @@ if [ "$#" -eq 0 ]; then
   # If no arguments provided, use default encoder and quality
   ENCODER="$DEFAULT_ENCODER"
   QUALITY="$DEFAULT_QUALITY"
+
+  echo -e "${ERROR} Script run with no arguments will defualt to debugging mode.   Use ${NC}-h ${ERROR}or ${NC}--help ${ERROR}for detailed insructions${NC}"
 elif [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   # Display help information if the user asks for help
   display_help
@@ -137,6 +151,7 @@ log_file="conversion_log.txt"
 echo "The following files have been converted" >> "$log_file"
 echo >> "$log_file"
 
+#JANK HACK to process the production modde argument.
 MODE="$3"
 #The encoding loop using find to locate .mov files recursively
 find . -type f -name "*.mov" -print0 | while IFS= read -r -d '' file; do
@@ -174,4 +189,6 @@ echo "$signature">> "$log_file"
 echo -e "${BOLD}${COLOR}Total script execution time: $elapsed_minutes minutes"
 
 #Publish a notification
-sendToTeams "$elapsed_minutes" "$log_file"
+#THIS IS CASUING some extra characters on a new line.  need to ficgure out why callign this fucntion is printing to the terminal
+##doing a jank redirect to dev null to silence the error output I was getting
+sendToTeams "$elapsed_minutes" "$log_file" >/dev/null 2>&1
